@@ -39,6 +39,9 @@ jobs:
             
             echo "Executing rollback to image: $IMAGE_NAME on environment: ${{ github.event.inputs.environment_target }}"
 
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker pull $IMAGE_NAME
+            
             CONTAINER_NAME="dev-challenge-app"
             if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
               echo "Stopping and removing existing container..."
@@ -47,8 +50,6 @@ jobs:
             fi
 
             echo "Starting rolled-back container..."
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker pull $IMAGE_NAME
             docker run -d --rm -p 3001:3001 \
               --name $CONTAINER_NAME \
               $IMAGE_NAME
