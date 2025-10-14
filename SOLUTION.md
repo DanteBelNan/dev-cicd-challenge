@@ -63,3 +63,68 @@ graph TD
         J -- Aprobado --> K[Deploy a Producción];
         I -- No --> L[Detener Pipeline 🛑];
     end
+
+### Detalle de los Jobs
+- **`build-and-test` (CI):** Se dispara en cada `push` a cualquier rama. Instala dependencias y ejecuta todos los tests.
+- **`prepare`:** En un merge a `main`, calcula variables compartidas para los jobs posteriores.
+- **`build-and-push-image`:** Construye la imagen de Docker y la publica en GitHub Container Registry (GHCR) con una etiqueta inmutable (el SHA del commit).
+- **`deploy-staging`:** Despliega automáticamente la imagen en el servidor de Staging.
+- **`test-staging-e2e`:** Ejecuta tests de extremo a extremo contra el entorno de Staging para una validación final.
+- **`deploy-production`:** Tras el éxito de los tests E2E, se pausa y espera una **aprobación manual** antes de desplegar en el servidor de Producción.
+
+---
+## 6. Características Clave y Seguridad del Pipeline
+
+Esta sección detalla las decisiones de diseño cruciales para la seguridad y funcionalidad del pipeline.
+
+### Gestión de Secretos
+La seguridad es primordial. El pipeline evita por completo el uso de credenciales hardcodeadas mediante el sistema de **Secrets de GitHub**.
+- **`SSH_PRIVATE_KEY` y `USER`**: Se configuran como **Secretos de Repositorio**. Se usan para autenticar la conexión SSH a los servidores.
+- **`HOST`**: Se configura como un **Secreto de Entorno**, permitiendo que el mismo pipeline apunte a diferentes IPs para `staging` y `production`.
+- **`GITHUB_TOKEN`**: Es un token automático y temporal generado por GitHub Actions para cada ejecución, usado para autenticarse de forma segura con el registro de contenedores (GHCR).
+
+### Aprobación Manual para Producción
+Para prevenir despliegues accidentales en el entorno productivo, se implementó una barrera de seguridad.
+- **Implementación:** Se configuró una **regla de protección ("Required reviewers")** en el entorno `production` de GitHub.
+- **Funcionamiento:** El pipeline se **pausa automáticamente** antes de ejecutar el job `deploy-production` y solo continúa si un revisor autorizado lo aprueba manualmente. Esto garantiza un control humano final antes de afectar a los usuarios.
+
+### Integración y Prueba con AWS
+El pipeline está diseñado para ser agnóstico a la nube y funcionar con cualquier servidor accesible por SSH.
+- **Prueba de Concepto:** Para validar la solución de extremo a fin, el pipeline fue ejecutado exitosamente contra dos instancias **EC2 de AWS** (una para staging y otra para producción), demostrando su funcionalidad en un entorno real. La acción `appleboy/ssh-action` sirve como puente, ejecutando los scripts de `docker` en las instancias remotas para actualizar la aplicación. El éxito de los tests E2E contra la IP del servidor de staging confirma que todo el flujo, desde el código hasta la ejecución en la nube, es correcto.
+
+---
+## 7. Estrategia de Rollback
+
+Para situaciones donde se descubre un bug en producción después de un despliegue exitoso, existe un plan de rollback manual.
+
+- **Workflow:** Un workflow separado y de disparo manual (`.github/workflows/rollback.yml`).
+- **Proceso:** Se ejecuta desde la pestaña "Actions" en GitHub y requiere dos entradas: el **Commit SHA** de una versión anterior y estable, y el **Entorno** a afectar.
+- **Acción:** El workflow vuelve a ejecutar el script de despliegue, pero utilizando la etiqueta de la imagen correspondiente al commit SHA especificado, restaurando así una versión anterior y estable.
+
+---
+## 8. Cómo Ejecutar en Local
+
+El proyecto está diseñado para funcionar exclusivamente con Docker, sin necesidad de tener Node.js o npm instalados en tu máquina local.
+
+1.  **Construir e iniciar los servicios:**
+    Este comando construirá la imagen y levantará el contenedor en segundo plano (`-d`).
+    ```bash
+    docker-compose up --build -d
+    ```
+    La aplicación estará disponible en `http://localhost:3001`.
+
+2.  **Ejecutar tests:**
+    Los tests se ejecutan dentro del contenedor que ya está corriendo.
+    ```bash
+    docker-compose exec app npm test
+    ```
+
+3.  **Ver los logs (opcional):**
+    ```bash
+    docker-compose logs -f
+    ```
+
+4.  **Detener los servicios:**
+    ```bash
+    docker-compose down
+    ```
