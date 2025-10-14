@@ -21,7 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: ${{ github.event.inputs.environment_target }}
-      url: http://${{ secrets.HOST }}
 
     steps:
       - name: Set repo name to lowercase

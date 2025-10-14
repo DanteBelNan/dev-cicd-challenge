@@ -53,7 +53,6 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: staging
-      url: http://staging.example.com
     steps:
       - name: Deploy to Staging Server
         uses: appleboy/ssh-action@master
@@ -101,7 +100,6 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment:
       name: production
-      url: http://production.example.com
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to Production Server
