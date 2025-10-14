@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "test": "jest --runInBand"
+    "start": "node backend/server.js",
+    "test": "NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest backend/__tests__"
   },
   "dependencies": {
     "express": "^4.19.2"
