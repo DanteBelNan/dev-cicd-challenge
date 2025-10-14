@@ -63,6 +63,7 @@ graph TD
         J -- Aprobado --> K[Deploy a Producción];
         I -- No --> L[Detener Pipeline 🛑];
     end
+```
 
 ### Detalle de los Jobs
 - **`build-and-test` (CI):** Se dispara en cada `push` a cualquier rama. Instala dependencias y ejecuta todos los tests.
