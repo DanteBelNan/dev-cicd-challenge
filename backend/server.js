@@ -1,13 +1,16 @@
 import express from 'express';
-import { getHealth } from './handlers/health.handler.js';
+import { getHealth } from './handlers/health.js';
+import { validateCuitHandler } from './handlers/cuit.js';
 
 const app = express();
+app.use(express.json());
+const PORT = 3001;
 
 app.get('/health', getHealth);
+app.post('/cuit/validate', validateCuitHandler);
 
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(3001, () => console.log(`Running on 3001`));
+  app.listen(PORT, () => console.log(`Running on ${PORT}`));
 }
 
 export default app;
-
