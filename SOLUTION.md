@@ -54,14 +54,14 @@ graph TD
     B --> C[Build & Test];
 
     subgraph "Pipeline de CD (en merge a main)"
-        D[Merge a main] --> E[Preparar Variables];
+        D[Merge a main] --> E[Crear Tag de Versión];
         E --> F[Build & Push de Imagen a GHCR];
         F --> G[Deploy a Staging];
         G --> H[Ejecutar Tests E2E en Staging];
         H --> I{¿Tests Pasan?};
         I -- Si --> J[Esperar Aprobación Manual 🛡️];
         J -- Aprobado --> K[Deploy a Producción];
-        I -- No --> L[Detener Pipeline 🛑];
+        I -- No --> L[Rollback Automático en Staging ⏪];
     end
 ```
 

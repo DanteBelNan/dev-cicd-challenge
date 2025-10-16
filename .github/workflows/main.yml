@@ -60,7 +60,6 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: staging
-      url: http://staging.example.com
     steps:
       - name: Set repo name to lowercase
         id: string
@@ -103,7 +102,7 @@ jobs:
           curl -s -X POST -H "Content-Type: application/json" \
            -d '{"cuit": "20111111112"}' \
            http://${{ secrets.HOST }}:3001/cuit/validate | jq -e '.isValid == true'
-
+           
   rollback-staging:
     name: Rollback Staging on Failure
     needs: [test-staging-e2e, create-tag]
@@ -150,7 +149,6 @@ jobs:
     if: success() && github.ref == 'refs/heads/main'
     environment:
       name: production
-      url: http://production.example.com
     runs-on: ubuntu-latest
     steps:
       - name: Set repo name to lowercase
