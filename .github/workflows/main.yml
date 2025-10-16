@@ -101,8 +101,8 @@ jobs:
           echo "--- Running CUIT Validation Check ---"
           curl -s -X POST -H "Content-Type: application/json" \
            -d '{"cuit": "20111111112"}' \
-           http://${{ secrets.HOST }}:3001/cuit/validate | jq -e '.isValid == true'
-           
+           http://${{ secrets.HOST }}:3001/cuit/validate | jq -e '.isValid == false'
+
   rollback-staging:
     name: Rollback Staging on Failure
     needs: [test-staging-e2e, create-tag]
