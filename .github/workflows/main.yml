@@ -73,15 +73,19 @@ jobs:
           script: |
             IMAGE_NAME="ghcr.io/${{ steps.string.outputs.repo_name }}:${{ needs.create-tag.outputs.new_tag }}"
             CONTAINER_NAME="dev-challenge-app"
+            
+            echo "Pulling new image: $IMAGE_NAME"
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker pull $IMAGE_NAME
+            
             if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
               echo "Stopping and removing existing container..."
               docker stop $CONTAINER_NAME
               docker rm $CONTAINER_NAME
             fi
-            echo "Starting new container with image: $IMAGE_NAME"
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker pull $IMAGE_NAME
-            docker run -d --rm -p 3001:3001 \
+
+            echo "Starting new container..."
+            docker run -d --restart unless-stopped -p 3001:3001 \
               --name $CONTAINER_NAME \
               $IMAGE_NAME
 
@@ -92,8 +96,24 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     steps:
-      - name: Wait for server to be ready
-        run: sleep 10
+      - name: Wait for server to be ready with healthcheck
+        run: |
+          retries=15
+          delay=2
+          url="http://${{ secrets.HOST }}:3001/health"
+
+          for i in $(seq 1 $retries); do
+            status_code=$(curl -s -o /dev/null -w "%{http_code}" "$url")
+            if [ "$status_code" -eq 200 ]; then
+              echo "Healthcheck passed on attempt $i!"
+              exit 0
+            fi
+            echo "Attempt $i/$retries failed with status $status_code. Retrying in $delay seconds..."
+            sleep $delay
+          done
+
+          echo "Healthcheck failed after $retries attempts."
+          exit 1
       - name: Run E2E tests against staging environment
         run: |
           echo "--- Running Health Check ---"
@@ -131,15 +151,17 @@ jobs:
 
             echo "E2E tests failed! Rolling back Staging to previous version: $IMAGE_TAG"
             
+            echo "Pulling rollback image: $IMAGE_NAME"
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker pull $IMAGE_NAME
+
             if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
               docker stop $CONTAINER_NAME
               docker rm $CONTAINER_NAME
             fi
 
             echo "Starting rolled-back container..."
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker pull $IMAGE_NAME
-            docker run -d --rm -p 3001:3001 \
+            docker run -d --restart unless-stopped -p 3001:3001 \
               --name $CONTAINER_NAME \
               $IMAGE_NAME
 
@@ -163,14 +185,18 @@ jobs:
           script: |
             IMAGE_NAME="ghcr.io/${{ steps.string.outputs.repo_name }}:${{ needs.create-tag.outputs.new_tag }}"
             CONTAINER_NAME="dev-challenge-app"
+
+            echo "Pulling new image: $IMAGE_NAME"
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker pull $IMAGE_NAME
+
             if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
               echo "Stopping and removing existing container..."
               docker stop $CONTAINER_NAME
               docker rm $CONTAINER_NAME
             fi
-            echo "Starting new container with image: $IMAGE_NAME"
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker pull $IMAGE_NAME
-            docker run -d --rm -p 3001:3001 \
+            
+            echo "Starting new container..."
+            docker run -d --restart unless-stopped -p 3001:3001 \
               --name $CONTAINER_NAME \
               $IMAGE_NAME
