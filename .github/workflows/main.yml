@@ -14,25 +14,32 @@ jobs:
       - run: npm ci
       - run: npm test
 
-  prepare:
-    name: Prepare Variables
+  create-tag:
+    name: Create Version Tag
     needs: build-and-test
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
-      repo_name: ${{ steps.string.outputs.repo_name }}
+      new_tag: ${{ steps.tag_version.outputs.new_tag }}
+      previous_tag: ${{ steps.tag_version.outputs.previous_tag }}
     steps:
-      - name: Set repo name to lowercase
-        id: string
-        run: echo "repo_name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+      - name: Bump version and push tag
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
   build-and-push-image:
     name: Build and Push Image
-    needs: [build-and-test, prepare]
+    needs: create-tag
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Set repo name to lowercase
+        id: string
+        run: echo "repo_name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -44,16 +51,20 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ needs.prepare.outputs.repo_name }}:${{ github.sha }}
+          tags: ghcr.io/${{ steps.string.outputs.repo_name }}:${{ needs.create-tag.outputs.new_tag }}
 
   deploy-staging:
     name: Deploy to Staging
-    needs: [build-and-push-image, prepare]
+    needs: [build-and-push-image, create-tag]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: staging
+      url: http://staging.example.com
     steps:
+      - name: Set repo name to lowercase
+        id: string
+        run: echo "repo_name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
       - name: Deploy to Staging Server
         uses: appleboy/ssh-action@master
         with:
@@ -61,29 +72,26 @@ jobs:
           username: ${{ secrets.USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            IMAGE_NAME="ghcr.io/${{ needs.prepare.outputs.repo_name }}:${{ github.sha }}"
+            IMAGE_NAME="ghcr.io/${{ steps.string.outputs.repo_name }}:${{ needs.create-tag.outputs.new_tag }}"
             CONTAINER_NAME="dev-challenge-app"
-
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker pull $IMAGE_NAME
-            
             if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
               echo "Stopping and removing existing container..."
               docker stop $CONTAINER_NAME
               docker rm $CONTAINER_NAME
             fi
             echo "Starting new container with image: $IMAGE_NAME"
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker pull $IMAGE_NAME
             docker run -d --rm -p 3001:3001 \
               --name $CONTAINER_NAME \
               $IMAGE_NAME
 
   test-staging-e2e:
     name: E2E Test on Staging
-    needs: deploy-staging
+    needs: [deploy-staging, create-tag]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment:
-      name: staging
+    environment: staging
     steps:
       - name: Wait for server to be ready
         run: sleep 10
@@ -93,17 +101,61 @@ jobs:
           curl -s http://${{ secrets.HOST }}:3001/health | jq -e '.status == "ok"'
           echo "--- Running CUIT Validation Check ---"
           curl -s -X POST -H "Content-Type: application/json" \
-            -d '{"cuit": "20111111112"}' \
-            http://${{ secrets.HOST }}:3001/cuit/validate | jq -e '.isValid == true'
+           -d '{"cuit": "20111111112"}' \
+           http://${{ secrets.HOST }}:3001/cuit/validate | jq -e '.isValid == true'
+
+  rollback-staging:
+    name: Rollback Staging on Failure
+    needs: [test-staging-e2e, create-tag]
+    if: failure() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Set repo name to lowercase
+        id: string
+        run: echo "repo_name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+      - name: Deploy Previous Version to Staging
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            IMAGE_TAG=${{ needs.create-tag.outputs.previous_tag }}
+            if [ -z "$IMAGE_TAG" ]; then
+              echo "No previous tag found, skipping rollback."
+              exit 0
+            fi
+            
+            IMAGE_NAME="ghcr.io/${{ steps.string.outputs.repo_name }}:$IMAGE_TAG"
+            CONTAINER_NAME="dev-challenge-app"
+
+            echo "E2E tests failed! Rolling back Staging to previous version: $IMAGE_TAG"
+            
+            if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
+              docker stop $CONTAINER_NAME
+              docker rm $CONTAINER_NAME
+            fi
+
+            echo "Starting rolled-back container..."
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker pull $IMAGE_NAME
+            docker run -d --rm -p 3001:3001 \
+              --name $CONTAINER_NAME \
+              $IMAGE_NAME
 
   deploy-production:
     name: Deploy to Production
-    needs: [test-staging-e2e, prepare]
-    if: github.ref == 'refs/heads/main'
+    needs: [test-staging-e2e, create-tag]
+    if: success() && github.ref == 'refs/heads/main'
     environment:
       name: production
+      url: http://production.example.com
     runs-on: ubuntu-latest
     steps:
+      - name: Set repo name to lowercase
+        id: string
+        run: echo "repo_name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
       - name: Deploy to Production Server
         uses: appleboy/ssh-action@master
         with:
@@ -111,19 +163,16 @@ jobs:
           username: ${{ secrets.USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            IMAGE_NAME="ghcr.io/${{ needs.prepare.outputs.repo_name }}:${{ github.sha }}"
+            IMAGE_NAME="ghcr.io/${{ steps.string.outputs.repo_name }}:${{ needs.create-tag.outputs.new_tag }}"
             CONTAINER_NAME="dev-challenge-app"
-
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker pull $IMAGE_NAME
-
             if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
               echo "Stopping and removing existing container..."
               docker stop $CONTAINER_NAME
               docker rm $CONTAINER_NAME
             fi
-
             echo "Starting new container with image: $IMAGE_NAME"
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker pull $IMAGE_NAME
             docker run -d --rm -p 3001:3001 \
               --name $CONTAINER_NAME \
               $IMAGE_NAME

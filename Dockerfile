@@ -1,17 +1,13 @@
-FROM node:18-alpine
-
+FROM node:18-alpine AS base
 WORKDIR /app
-
 COPY package*.json ./
 
-RUN chown -R node:node /app
+FROM base AS development
+RUN npm install
+COPY . .
+CMD ["npm", "run", "dev"]
 
-USER node
-
+FROM base AS production
 RUN npm ci --omit=dev
-
-COPY --chown=node:node ./backend ./backend
-
-EXPOSE 3001
-
-CMD ["node", "backend/server.js"]
+COPY . .
+CMD ["npm", "start"]

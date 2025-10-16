@@ -80,7 +80,7 @@ Esta sección detalla las decisiones de diseño cruciales para la seguridad y fu
 
 ### Gestión de Secretos
 La seguridad es primordial. El pipeline evita por completo el uso de credenciales hardcodeadas mediante el sistema de **Secrets de GitHub**.
-- **`SSH_PRIVATE_KEY` y `USER`**: Se configuran como **Secretos de Repositorio**. Se usan para autenticar la conexión SSH a los servidores.
+- **`SSH_PRIVATE_KEY` y `USER`**: Se configuran como **Secretos de Repositorio**. Se usan para autenticar la conexión SSH a las instancias EC2.
 - **`HOST`**: Se configura como un **Secreto de Entorno**, permitiendo que el mismo pipeline apunte a diferentes IPs para `staging` y `production`.
 - **`GITHUB_TOKEN`**: Es un token automático y temporal generado por GitHub Actions para cada ejecución, usado para autenticarse de forma segura con el registro de contenedores (GHCR).
 

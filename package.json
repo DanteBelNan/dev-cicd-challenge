@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node backend/server.js",
+    "dev": "nodemon backend/server.js",
     "test": "NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest backend/__tests__"
   },
   "dependencies": {
@@ -11,6 +12,7 @@
   },
   "devDependencies": {
     "jest": "^29.7.0",
+    "nodemon": "^3.1.10",
     "supertest": "^6.3.4"
   }
 }
