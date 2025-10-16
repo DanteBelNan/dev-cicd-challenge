@@ -3,8 +3,8 @@ name: Manual Rollback
 on:
   workflow_dispatch:
     inputs:
-      commit_sha:
-        description: 'The commit SHA of the stable version to restore.'
+      version_tag:
+        description: 'The version tag to restore (e.g., v1.2.1).'
         required: true
       environment_target:
         description: 'The environment to roll back (staging or production).'
@@ -34,15 +34,16 @@ jobs:
           username: ${{ secrets.USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            IMAGE_TAG=${{ github.event.inputs.commit_sha }}
+            IMAGE_TAG=${{ github.event.inputs.version_tag }}
             IMAGE_NAME="ghcr.io/${{ steps.string.outputs.repo_name }}:$IMAGE_TAG"
-            
+            CONTAINER_NAME="dev-challenge-app"
+
             echo "Executing rollback to image: $IMAGE_NAME on environment: ${{ github.event.inputs.environment_target }}"
 
+            echo "Pulling rollback image..."
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker pull $IMAGE_NAME
             
-            CONTAINER_NAME="dev-challenge-app"
             if [ "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
               echo "Stopping and removing existing container..."
               docker stop $CONTAINER_NAME
@@ -50,6 +51,6 @@ jobs:
             fi
 
             echo "Starting rolled-back container..."
-            docker run -d --rm -p 3001:3001 \
+            docker run -d --restart unless-stopped -p 3001:3001 \
               --name $CONTAINER_NAME \
               $IMAGE_NAME
