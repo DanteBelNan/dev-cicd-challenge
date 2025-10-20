@@ -102,6 +102,26 @@ Para situaciones donde se descubre un bug en producción después de un desplieg
 - **Proceso:** Se ejecuta desde la pestaña "Actions" en GitHub y requiere dos entradas: el **Commit SHA** de una versión anterior y estable, y el **Entorno** a afectar.
 - **Acción:** El workflow vuelve a ejecutar el script de despliegue, pero utilizando la etiqueta de la imagen correspondiente al commit SHA especificado, restaurando así una versión anterior y estable.
 
+### Diagrama de Flujo del Rollback
+```mermaid
+graph LR
+    A[🧑‍💻 Operador inicia el Rollback Manual] --> B{"Ingresa Versión (ej: v1.2.1) y Entorno"};
+    B --> C[▶️ Workflow 'Manual Rollback' se ejecuta];
+    
+    C --> D{¿El entorno es 'production'?};
+    D -- Sí --> E[🛡️ Espera Aprobación Manual];
+    D -- "No (es 'staging')" --> F[⚙️ Se conecta al servidor del entorno vía SSH];
+    E -- Aprobado --> F;
+
+    subgraph "Acciones en el Servidor Remoto (EC2)"
+        F --> G[1. Descarga la imagen de la versión anterior desde GHCR];
+        G --> H[2. Detiene y elimina el contenedor actual];
+        H --> I[3. Inicia un nuevo contenedor con la versión anterior];
+    end
+
+    I --> J[✅ Servicio restaurado a la versión estable];
+```
+
 ---
 ## 8. Cómo Ejecutar en Local
 
